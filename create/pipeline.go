@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/ollama/ollama/types/model"
 )
 
@@ -62,6 +64,10 @@ func Create(ctx context.Context, modelName, modelDir string, opts PipelineOption
 			return err
 		}
 	}
+	// Older releases can't run Phonon, whatever the Modelfile or client says.
+	if inv.Config.Architecture() == "Phonon" && semver.Compare("v"+modelConfig.Requires, "v"+phononMinOllamaVersion) < 0 {
+		modelConfig.Requires = phononMinOllamaVersion
+	}
 	if err := validateMLXSource(inv.Config, false, opts.Validation); err != nil {
 		return err
 	}
@@ -70,6 +76,9 @@ func Create(ctx context.Context, modelName, modelDir string, opts PipelineOption
 	}
 	if inv.Config.Architecture() == "LayaForDecision" && opts.Quantize != "" {
 		return fmt.Errorf("Laya currently requires unquantized weights")
+	}
+	if inv.Config.Architecture() == "Phonon" && opts.Quantize != "" {
+		return fmt.Errorf("Phonon currently requires unquantized weights")
 	}
 	class, err := Classify(inv, opts.Quantize)
 	if err != nil {

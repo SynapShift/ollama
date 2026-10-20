@@ -972,6 +972,9 @@ func RunHandler(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("ask") {
 		return fmt.Errorf("%s is not a decision model, so it can't answer --ask questions", name)
 	}
+	if cmd.Flags().Changed("voice") && !slices.Contains(info.Capabilities, model.CapabilitySpeech) {
+		return fmt.Errorf("%s is not a speech model, so it can't use --voice", name)
+	}
 
 	// Check if this is an embedding model
 	isEmbeddingModel := slices.Contains(info.Capabilities, model.CapabilityEmbedding)
@@ -994,6 +997,14 @@ func RunHandler(cmd *cobra.Command, args []string) error {
 		}
 
 		return generateEmbedding(cmd, name, opts.Prompt, opts.KeepAlive, truncate, dimensions)
+	}
+
+	if slices.Contains(info.Capabilities, model.CapabilitySpeech) {
+		voice, err := cmd.Flags().GetString("voice")
+		if err != nil {
+			return err
+		}
+		return runSpeech(cmd.Context(), name, voice, opts.Prompt, interactive)
 	}
 
 	if slices.Contains(info.Capabilities, model.CapabilityImage) {
@@ -1261,7 +1272,10 @@ func ListRunningHandler(cmd *cobra.Command, args []string) error {
 			} else {
 				until = format.HumanTime(m.ExpiresAt, "Never")
 			}
-			ctxStr := strconv.Itoa(m.ContextLength)
+			ctxStr := "-"
+			if m.ContextLength > 0 {
+				ctxStr = strconv.Itoa(m.ContextLength)
+			}
 			data = append(data, []string{m.Name, m.Digest[:12], format.HumanBytes(m.Size), procStr, ctxStr, m.Runner, until})
 		}
 	}
@@ -2597,6 +2611,7 @@ func NewCLI() *cobra.Command {
 	runCmd.Flags().Bool("hidethinking", false, "Hide thinking output (if provided)")
 	runCmd.Flags().Bool("truncate", false, "For embedding models: truncate inputs exceeding context length (default: true). Set --truncate=false to error instead")
 	runCmd.Flags().Int("dimensions", 0, "Truncate output embeddings to specified dimension (embedding models only)")
+	runCmd.Flags().String("voice", "", "Voice to speak with (speech models only)")
 	var asked []askedQuestion
 	runCmd.Flags().Var(questionFlag{"ask", &asked}, "ask", "Ask a decision model a question, answered yes or no unless --choice or --level follow")
 	runCmd.Flags().Var(questionFlag{"choice", &asked}, "choice", `Add a label for the preceding --ask to choose from, e.g. billing="Payments and refunds"`)
