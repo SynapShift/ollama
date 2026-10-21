@@ -1,0 +1,41 @@
+name: Verify System One empty state
+on:
+  push:
+    branches: [verify-systemone-empty-state]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: "1.26.9"
+          cache: true
+      - name: Confirm the original rejection fails the regressions
+        shell: bash
+        run: |
+          cp decision/systemone.go /tmp/systemone.go.fixed
+          trap 'cp /tmp/systemone.go.fixed decision/systemone.go' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("decision/systemone.go")
+          path.write_text(path.read_text().replace('decisionType != "vllm-d3" && ', '', 1))
+          PY
+          if go test ./decision ./server -run 'TestValidateLimitsEmptyState|TestSystemOneHandler$/vllm-d3' -count=1 > /tmp/before.log 2>&1; then
+            cat /tmp/before.log
+            echo "The regressions did not detect the original rejection"
+            exit 1
+          fi
+          cat /tmp/before.log
+          grep -q 'state must not be empty' /tmp/before.log
+      - name: Run decision and HTTP server tests with the fix
+        run: go test -count=1 ./decision ./server
+      - name: Vet changed packages
+        run: go vet ./decision ./server
+      - name: Check formatting
+        run: test -z "$(gofmt -l decision/systemone.go decision/systemone_test.go server/routes.go server/systemone_test.go)"
