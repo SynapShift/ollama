@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
-          go-version: "1.26.9"
+          go-version-file: go.mod
           cache: true
       - name: Confirm the original rejection fails the regressions
         shell: bash
@@ -24,7 +24,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           path = Path("decision/systemone.go")
-          path.write_text(path.read_text().replace('decisionType != "vllm-d3" && ', '', 1))
+          source = path.read_text()
+          guard = 'decisionType != "vllm-d3" && '
+          assert source.count(guard) == 1
+          path.write_text(source.replace(guard, '', 1))
           PY
           if go test ./decision ./server -run 'TestValidateLimitsEmptyState|TestSystemOneHandler$/vllm-d3' -count=1 > /tmp/before.log 2>&1; then
             cat /tmp/before.log
@@ -33,6 +36,8 @@ jobs:
           fi
           cat /tmp/before.log
           grep -q 'state must not be empty' /tmp/before.log
+          grep -q -- '--- FAIL: TestValidateLimitsEmptyState' /tmp/before.log
+          grep -q -- '--- FAIL: TestSystemOneHandler' /tmp/before.log
       - name: Run decision and HTTP server tests with the fix
         run: go test -count=1 ./decision ./server
       - name: Vet changed packages
